@@ -1,4 +1,4 @@
-// ##############################################
+// ################################################
 // EPS Group H 2016
 // Sketch for ATMEGA328P and NRF24L01
 //
@@ -20,21 +20,22 @@
 // MISO		12
 // IRQ		2/3
 //
-// ##############################################
-
-// We'll need so use our own 'efficient' ATMEGA power supply so sleep actually matters
+// SPI uses pin 13 as SCK - overriding onboard LED!
+// ################################################
+// Use own 'efficient' ATMEGA power supply so sleep actually matters
 
 #include <SPI.h>
 #include <RadioHead.h>
-#include <RH_NRF24.h>
+#include <RH_NRF24.h> // Radio module
 #include <avr/interrupt.h>
-#include <avr/power.h>
 #include <avr/sleep.h>
+#include <avr/power.h> // Use PRR (power reduction register) to save in idle(/running!)
 
 // Could be useful
 // nrf24.waitAvailableTimeout(500)
 // nrf24.waitAvailable()
 // detachInterrupt(irqNum)
+// LED_BUILTIN
 
 // Comment next line to remove serial messages from compilation
 #define DEBUG
@@ -47,26 +48,35 @@
 	#define DEBUG_PRINT(x)
 	#define DEBUG_PRINTLN(x)
 #endif
+#define IRQ_PIN 2
 
 // Singleton instance of the radio driver
 RH_NRF24 nrf24;
 
-const byte irqNum = digitalPinToInterrupt(2); // Use 2 or 3
+const byte irqNum = digitalPinToInterrupt(IRQ_PIN); // Use 2 or 3
+bool interrupted = false;
 
 // Runs on startup
 void setup() {
+	pinMode(IRQ_PIN, INPUT); //Interrupt
 	DEBUG_BEGIN(9600);
 	check("init       ", nrf24.init());
 	check("setChannel ", nrf24.setChannel(1)); // Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
 	check("setRF      ", nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm));
-	attachInterrupt(irqNum, isr, CHANGE); // LOW, CHANGE, RISING, FALLING
-
 	DEBUG_PRINTLN();
+
+	DEBUG_PRINTLN(F("Sleeping..."));
+	delay(1000);
+	sleepNow();
 }
 
 // Loops after setup()
 void loop() {
 	// sendMsg("Hello World!");
+	if (interrupted == true) {
+		DEBUG_PRINTLN(F("Woken!"));
+		interrupted = false;
+	}
 	if (!recvMsg()) DEBUG_PRINT(F("."));
 	delay(1000);
 }
@@ -109,23 +119,18 @@ bool recvMsg() {
 		return false;
 }
 
-// Called on an interrupt
+// Called on an interrupt, wake from sleep
 void isr() {
+	sleep_disable(); // Stops a rare case of sleeping with not interrupt set
 	detachInterrupt(0); // Already called, stop it being called repeatedly
-	// http://playground.arduino.cc/Learning/ArduinoSleepCode
-	// POWER_MODE_IDLE
-	// SLEEP_MODE_IDLE
-	// Ensure that the 8-bit timer is disabled if using arduino layer
-	// PRR: Power Reduction Register
-	// 	Before entering sleep mode:
-	// 	PRR = PRR | 0b00100000
-	// 	After exiting sleep mode:
-	// 	PRR = PRR & 0b0000000
-	// millis() now unreliable for time comparison before and after sleep
+	interrupted = true;
 }
 
+// Call this to sleep. Returns when woken
 void sleepNow()
 {
+	// Maybe check out Narcoleptic library
+	// https://github.com/brabl2/narcoleptic/blob/master/Narcoleptic.h
 	// http://www.nongnu.org/avr-libc/user-manual/group__avr__power.html
 	// The 5 different modes are:
 	// 	SLEEP_MODE_IDLE		- least power savings
@@ -133,20 +138,23 @@ void sleepNow()
 	// 	SLEEP_MODE_PWR_SAVE
 	// 	SLEEP_MODE_STANDBY
 	// 	SLEEP_MODE_PWR_DOWN	- most power savings
+	// LOW trigger must be used if not using SLEEP_MODE_IDLE
 	set_sleep_mode(SLEEP_MODE_IDLE);
 
 	sleep_enable(); // Enables sleep bit in the MCUCR
+	attachInterrupt(irqNum, isr, CHANGE); // LOW, CHANGE, RISING, FALLING
 
-	// Functions in avr/power.h for more savings
 	power_adc_disable();
 	power_spi_disable();
+	power_twi_disable();
 	power_timer0_disable();
 	power_timer1_disable();
 	power_timer2_disable();
-	power_twi_disable();
+	// power_all_disable();
 
 	sleep_mode(); // Device is actually put to sleep here
 	// AFTER WAKING UP - CONTINUES FROM HERE
 	sleep_disable(); // Disables sleep bit in the MCUCR
 	power_all_enable();
+	// delay(2000); // Allow time to turn back on
 }

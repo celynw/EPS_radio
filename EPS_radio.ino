@@ -59,26 +59,28 @@ bool interrupted = false;
 // Runs on startup
 void setup() {
 	pinMode(IRQ_PIN, INPUT); //Interrupt
+	pinMode(4, OUTPUT); //TESTING
+	digitalWrite(4, HIGH); //TESTING
 	DEBUG_BEGIN(9600);
 	check("init       ", nrf24.init());
 	check("setChannel ", nrf24.setChannel(1)); // Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
 	check("setRF      ", nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm));
 	DEBUG_PRINTLN();
 
-	DEBUG_PRINTLN(F("Sleeping..."));
-	delay(1000);
-	sleepNow();
+	// DEBUG_PRINTLN(F("Sleeping..."));
+	// delay(1000);
+	// sleepNow();
 }
 
 // Loops after setup()
 void loop() {
 	// sendMsg("Hello World!");
-	if (interrupted == true) {
-		DEBUG_PRINTLN(F("Woken!"));
-		interrupted = false;
-	}
+	// if (interrupted == true) {
+		// DEBUG_PRINTLN(F("Woken!"));
+		// interrupted = false;
+	// }
 	if (!recvMsg()) DEBUG_PRINT(F("."));
-	delay(1000);
+	delay(100);
 }
 
 //Handy for checking if functions fail
@@ -129,6 +131,7 @@ void isr() {
 // Call this to sleep. Returns when woken
 void sleepNow()
 {
+	digitalWrite(4, LOW); //TESTING
 	// Maybe check out Narcoleptic library
 	// https://github.com/brabl2/narcoleptic/blob/master/Narcoleptic.h
 	// http://www.nongnu.org/avr-libc/user-manual/group__avr__power.html
@@ -156,5 +159,6 @@ void sleepNow()
 	// AFTER WAKING UP - CONTINUES FROM HERE
 	sleep_disable(); // Disables sleep bit in the MCUCR
 	power_all_enable();
-	// delay(2000); // Allow time to turn back on
+	digitalWrite(4, HIGH); //TESTING
+	delay(2000); // Allow time to turn back on
 }
